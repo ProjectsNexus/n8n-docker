@@ -10,41 +10,54 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
-      - name: Pull official n8n ARM64 image
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create Dockerfile
+        shell: bash
+        run: |
+          cat > Dockerfile <<'EOF'
+          FROM n8nio/n8n:latest
+          EOF
+
+      - name: Build actual ARM64 image
         shell: bash
         run: |
           set -e
-          docker pull --platform=linux/arm64 n8nio/n8n:latest
 
-      - name: Tag image
-        run: |
-          docker tag n8nio/n8n:latest n8n:latest
+          docker buildx build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --load \
+            --tag n8n:latest \
+            .
 
-      - name: Debug image metadata
-        shell: bash
-        run: |
-          docker image inspect n8n:latest
-
-      - name: Verify image architecture
+      - name: Verify actual image architecture
         shell: bash
         run: |
           set -e
 
-          OS=$(docker image inspect n8n:latest --format '{{.Os}}')
-          ARCH=$(docker image inspect n8n:latest --format '{{.Architecture}}')
+          docker image inspect n8n:latest > image-inspect.json
+
+          OS=$(jq -r '.[0].Os' image-inspect.json)
+          ARCH=$(jq -r '.[0].Architecture' image-inspect.json)
 
           echo "Detected OS: $OS"
           echo "Detected Architecture: $ARCH"
 
           if [ "$OS" != "linux" ] || [ "$ARCH" != "arm64" ]; then
-            echo "ERROR: Expected linux/arm64"
+            echo "ERROR: Wrong image architecture"
+            cat image-inspect.json
             exit 1
           fi
 
-          echo "SUCCESS: ARM64 verified"
+          echo "SUCCESS: Real ARM64 image verified"
 
       - name: Create Docker save archive
         shell: bash
@@ -52,22 +65,23 @@ jobs:
           set -e
           docker save -o n8n-snapdeploy-arm64.tar n8n:latest
 
-      - name: Verify Docker archive
+      - name: Verify Docker save archive
         shell: bash
         run: |
           set -e
 
           test -s n8n-snapdeploy-arm64.tar
 
-          tar -tf n8n-snapdeploy-arm64.tar | grep -q '^manifest.json$'
+          tar -tf n8n-snapdeploy-arm64.tar \
+            | grep -q '^manifest.json$'
 
-          echo "Docker archive successfully created"
+          echo "Docker save archive created successfully"
           ls -lh n8n-snapdeploy-arm64.tar
 
-      - name: Upload final archive
+      - name: Upload final TAR
         uses: actions/upload-artifact@v4
         with:
-          name: snapdeploy-n8n-arm64-final
+          name: n8n-snapdeploy-arm64-final
           path: n8n-snapdeploy-arm64.tar
           if-no-files-found: error
           retention-days: 7
