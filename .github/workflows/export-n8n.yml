@@ -1,5 +1,5 @@
 
-name: n8n Docker Image
+name: Build n8n ARM64 Deployment Archive
 
 on:
   workflow_dispatch:
@@ -8,39 +8,55 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
-      - name: Pull official n8n ARM64 image
-        run: |
-          docker pull --platform linux/arm64 docker.n8n.io/n8nio/n8n:latest
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Tag ARM64 image
-        run: |
-          docker tag docker.n8n.io/n8nio/n8n:latest n8n:latest
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Verify architecture
-        run: |
-          ARCH=$(docker image inspect n8n:latest \
-            --format '{{.Os}}/{{.Architecture}}')
-          echo "Image architecture: $ARCH"
-          test "$ARCH" = "linux/arm64"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Create Docker save archive
+      - name: Create Dockerfile
         run: |
-          docker save -o n8n-image-arm64.tar n8n:latest
+          cat > Dockerfile <<'EOF'
+          FROM --platform=linux/arm64 docker.n8n.io/n8nio/n8n:latest
+          EOF
+
+      - name: Build ARM64 Docker image archive
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --output type=docker,dest=n8n-snapdeploy-arm64.tar \
+            -t n8n:latest \
+            .
 
       - name: Verify archive
         run: |
-          test -s n8n-image-arm64.tar
-          tar -tf n8n-image-arm64.tar | grep -q manifest.json
+          test -s n8n-snapdeploy-arm64.tar
+          tar -tf n8n-snapdeploy-arm64.tar | grep -q manifest.json
 
-      - name: Upload ARM64 archive
+      - name: Load and verify image architecture
+        run: |
+          docker load -i n8n-snapdeploy-arm64.tar
+
+          ARCH=$(docker image inspect n8n:latest \
+            --format '{{.Os}}/{{.Architecture}}')
+
+          echo "Detected architecture: $ARCH"
+
+          test "$ARCH" = "linux/arm64"
+
+      - name: Upload final archive
         uses: actions/upload-artifact@v4
         with:
-          name: n8n-docker-image-arm64
-          path: n8n-image-arm64.tar
+          name: snapdeploy-n8n-arm64-final
+          path: n8n-snapdeploy-arm64.tar
           if-no-files-found: error
           retention-days: 7
