@@ -13,32 +13,34 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Pull official n8n image
+      - name: Pull official n8n ARM64 image
         run: |
-          docker pull docker.n8n.io/n8nio/n8n:latest
+          docker pull --platform linux/arm64 docker.n8n.io/n8nio/n8n:latest
 
-      - name: Tag image
+      - name: Tag ARM64 image
         run: |
           docker tag docker.n8n.io/n8nio/n8n:latest n8n:latest
 
-      - name: Verify image
+      - name: Verify architecture
         run: |
-          docker image inspect n8n:latest
+          ARCH=$(docker image inspect n8n:latest \
+            --format '{{.Os}}/{{.Architecture}}')
+          echo "Image architecture: $ARCH"
+          test "$ARCH" = "linux/arm64"
 
-      - name: Export Docker image
+      - name: Create Docker save archive
         run: |
-          docker save -o n8n-image.tar n8n:latest
+          docker save -o n8n-image-arm64.tar n8n:latest
 
-      - name: Verify Docker archive
+      - name: Verify archive
         run: |
-          test -s n8n-image.tar
-          tar -tf n8n-image.tar | head -20
-          tar -tf n8n-image.tar | grep -q manifest.json
+          test -s n8n-image-arm64.tar
+          tar -tf n8n-image-arm64.tar | grep -q manifest.json
 
-      - name: Upload Docker archive
+      - name: Upload ARM64 archive
         uses: actions/upload-artifact@v4
         with:
-          name: n8n-docker-image
-          path: n8n-image.tar
+          name: n8n-docker-image-arm64
+          path: n8n-image-arm64.tar
           if-no-files-found: error
           retention-days: 7
