@@ -14,40 +14,54 @@ jobs:
 
     steps:
       - name: Pull official n8n ARM64 image
+        shell: bash
         run: |
-          docker pull --platform linux/arm64 n8nio/n8n:latest
+          set -e
+          docker pull --platform=linux/arm64 n8nio/n8n:latest
 
       - name: Tag image
         run: |
           docker tag n8nio/n8n:latest n8n:latest
+
+      - name: Debug image metadata
+        shell: bash
+        run: |
+          docker image inspect n8n:latest
 
       - name: Verify image architecture
         shell: bash
         run: |
           set -e
 
-          ARCH=$(docker image inspect n8n:latest | jq -r '.[0] | "\(.Os)/\(.Architecture)"')
+          OS=$(docker image inspect n8n:latest --format '{{.Os}}')
+          ARCH=$(docker image inspect n8n:latest --format '{{.Architecture}}')
 
-          echo "Detected architecture: $ARCH"
+          echo "Detected OS: $OS"
+          echo "Detected Architecture: $ARCH"
 
-          if [ "$ARCH" != "linux/arm64" ]; then
-            echo "ERROR: Expected linux/arm64 but received $ARCH"
-            docker image inspect n8n:latest
+          if [ "$OS" != "linux" ] || [ "$ARCH" != "arm64" ]; then
+            echo "ERROR: Expected linux/arm64"
             exit 1
           fi
 
-          echo "ARM64 verification successful"
+          echo "SUCCESS: ARM64 verified"
 
       - name: Create Docker save archive
+        shell: bash
         run: |
+          set -e
           docker save -o n8n-snapdeploy-arm64.tar n8n:latest
 
       - name: Verify Docker archive
+        shell: bash
         run: |
           set -e
+
           test -s n8n-snapdeploy-arm64.tar
+
           tar -tf n8n-snapdeploy-arm64.tar | grep -q '^manifest.json$'
-          echo "Docker save archive verified"
+
+          echo "Docker archive successfully created"
           ls -lh n8n-snapdeploy-arm64.tar
 
       - name: Upload final archive
