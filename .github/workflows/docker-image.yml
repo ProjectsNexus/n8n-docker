@@ -1,0 +1,59 @@
+
+name: Export n8n ARM64 for SnapDeploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Pull official n8n ARM64 image
+        run: |
+          docker pull --platform linux/arm64 n8nio/n8n:latest
+
+      - name: Tag image
+        run: |
+          docker tag n8nio/n8n:latest n8n:latest
+
+      - name: Verify image architecture
+        shell: bash
+        run: |
+          set -e
+
+          ARCH=$(docker image inspect n8n:latest | jq -r '.[0] | "\(.Os)/\(.Architecture)"')
+
+          echo "Detected architecture: $ARCH"
+
+          if [ "$ARCH" != "linux/arm64" ]; then
+            echo "ERROR: Expected linux/arm64 but received $ARCH"
+            docker image inspect n8n:latest
+            exit 1
+          fi
+
+          echo "ARM64 verification successful"
+
+      - name: Create Docker save archive
+        run: |
+          docker save -o n8n-snapdeploy-arm64.tar n8n:latest
+
+      - name: Verify Docker archive
+        run: |
+          set -e
+          test -s n8n-snapdeploy-arm64.tar
+          tar -tf n8n-snapdeploy-arm64.tar | grep -q '^manifest.json$'
+          echo "Docker save archive verified"
+          ls -lh n8n-snapdeploy-arm64.tar
+
+      - name: Upload final archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapdeploy-n8n-arm64-final
+          path: n8n-snapdeploy-arm64.tar
+          if-no-files-found: error
+          retention-days: 7
