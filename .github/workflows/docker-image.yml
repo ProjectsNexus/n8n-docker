@@ -1,109 +1,55 @@
 
-name: n8n ARM64 for SnapDeploy
+name: Build n8n ARM64
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   export:
-    name: Build and Export n8n ARM64
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Create Dockerfile
-        shell: bash
+      - name: Build ARM64 image
         run: |
-          cat > Dockerfile <<'EOF'
-          FROM n8nio/n8n:latest
-
-          # SnapDeploy application port
-          ENV PORT=8080
-
-          # n8n web server configuration
-          ENV N8N_PORT=8080
-          ENV N8N_LISTEN_ADDRESS=0.0.0.0
-
-          # Timezone
-          ENV GENERIC_TIMEZONE=Asia/Karachi
-          ENV TZ=Asia/Karachi
-
-          # Reverse proxy configuration
-          ENV N8N_PROXY_HOPS=1
-
-          # Security
-          ENV N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-
-          EXPOSE 8080
-          EOF
-
-      - name: Build ARM64 Docker image
-        shell: bash
-        run: |
-          set -e
-
           docker buildx build \
             --platform linux/arm64 \
             --provenance=false \
             --load \
-            --tag n8n-snapdeploy:arm64 \
+            -t n8n-snapdeploy:arm64 \
             .
 
-      - name: Verify image architecture
-        shell: bash
+      - name: Verify architecture
         run: |
-          set -e
-
           docker image inspect n8n-snapdeploy:arm64 \
-            > image-inspect.json
+            --format '{{.Os}}/{{.Architecture}}'
 
-          OS=$(jq -r '.[0].Os' image-inspect.json)
-          ARCH=$(jq -r '.[0].Architecture' image-inspect.json)
+          test "$(docker image inspect n8n-snapdeploy:arm64 --format '{{.Os}}/{{.Architecture}}')" = "linux/arm64"
 
-          echo "Operating System: $OS"
-          echo "Architecture: $ARCH"
-
-          if [ "$OS" != "linux" ] || [ "$ARCH" != "arm64" ]; then
-            echo "ERROR: Image is not ARM64"
-            cat image-inspect.json
-            exit 1
-          fi
-
-          echo "SUCCESS: ARM64 image verified"
-
-      - name: Export Docker TAR
-        shell: bash
+      - name: Export TAR
         run: |
-          set -e
-
           docker save \
             -o n8n-snapdeploy-arm64.tar \
             n8n-snapdeploy:arm64
 
-          test -s n8n-snapdeploy-arm64.tar
-
-          tar -tf n8n-snapdeploy-arm64.tar \
-            | grep -q '^manifest.json$'
-
-          echo "Docker TAR created successfully"
-          ls -lh n8n-snapdeploy-arm64.tar
-
-      - name: Upload Docker TAR artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: n8n-snapdeploy-arm64-final
           path: n8n-snapdeploy-arm64.tar
-          if-no-files-found: error
           retention-days: 7
