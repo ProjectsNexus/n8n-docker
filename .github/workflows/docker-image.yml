@@ -1,5 +1,5 @@
 
-name: Export n8n ARM64 for SnapDeploy
+name: n8n ARM64 for SnapDeploy
 
 on:
   workflow_dispatch:
